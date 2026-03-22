@@ -1,0 +1,7 @@
+# Public mirror safety guard.
+# This repository intentionally tracks only a minimal public-safe subset.
+
+*
+!/.gitignore
+!/.gitattributes
+!/README.md
