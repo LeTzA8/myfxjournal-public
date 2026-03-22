@@ -1,0 +1,1400 @@
+{% extends "base.html" %}
+
+{% block content %}
+{% set summary = analytics.summary %}
+{% set streaks = analytics.streaks %}
+{% set best_trade = summary.best_trade %}
+{% set worst_trade = summary.worst_trade %}
+{% set top_pair = analytics.pair_stats[0] if analytics.pair_stats else none %}
+{% set top_session = analytics.session_stats[0] if analytics.session_stats else none %}
+{% set rr_ratio = rr_summary.rr_capture_ratio %}
+{% set rr_value_tone = 'good' if rr_ratio is not none and rr_ratio >= 0.85 else 'bad' if rr_ratio is not none else '' %}
+<section class="analytics-shell">
+    <div class="analytics-content">
+        <header class="analytics-hero panel">
+            <div>
+                <p class="eyebrow">Analytics</p>
+                <h1>Performance Analytics</h1>
+                <p class="hero-copy">Review edge quality, session timing, and how consistent you've been from the same data already feeding your dashboard.</p>
+                <p class="hero-help">New to journal metrics? Use the <strong>?</strong> icons on key cards for quick explanations of win rate, profit factor, expectancy, drawdown, and risk:reward.</p>
+            </div>
+            <div class="hero-meta">
+                {% if active_trade_account %}
+                <div class="meta-chip">
+                    <span>Account</span>
+                    <strong>{{ active_trade_account.name }}</strong>
+                </div>
+                {% endif %}
+                <div class="meta-chip">
+                    <span>Timezone</span>
+                    <strong>{{ analytics_timezone }}</strong>
+                </div>
+                <div class="meta-chip">
+                    <span>Week Start</span>
+                    <strong>{{ analytics.week_label }}</strong>
+                </div>
+            </div>
+        </header>
+
+        {% if summary.closed_trades == 0 %}
+        <section class="panel empty-state">
+            <h2>{% if has_any_trades %}Analytics unlock after your first closed trade{% else %}Analytics will fill in once you add trade history{% endif %}</h2>
+            <p>
+                {% if has_any_trades %}
+                You already have trades in the journal, but this page analyzes realized outcomes. Closed trades are what power win rate, expectancy, drawdown, session performance, and symbol breakdowns.
+                {% else %}
+                This page becomes useful once you import account history or add completed trades manually. It needs real trade outcomes before it can show patterns that are worth trusting.
+                {% endif %}
+            </p>
+            <div class="empty-step-grid">
+                <article class="empty-step-card">
+                    <p class="empty-step-label">Step 1</p>
+                    <p class="empty-step-title">Add or import trades</p>
+                    <p class="empty-step-copy">Use the import page for MT5 or Tradovate history, or enter a trade manually if you are starting fresh.</p>
+                </article>
+                <article class="empty-step-card">
+                    <p class="empty-step-label">Step 2</p>
+                    <p class="empty-step-title">Make sure some trades are closed</p>
+                    <p class="empty-step-copy">Closed trades with realized PnL are what turn this page from empty space into actual analytics.</p>
+                </article>
+                <article class="empty-step-card">
+                    <p class="empty-step-label">Step 3</p>
+                    <p class="empty-step-title">Come back for the breakdowns</p>
+                    <p class="empty-step-copy">You will see win rate, expectancy, session timing, pair behavior, equity, and drawdown context here.</p>
+                </article>
+            </div>
+            <div class="empty-actions">
+                <a href="{{ url_for('trades.new_trade') }}" class="trades-btn">Import or Add Trades</a>
+                <a href="{{ url_for('trades.trades') }}" class="ghost-btn">Open Journal</a>
+            </div>
+        </section>
+        {% else %}
+        <section class="kpi-grid">
+            <article class="kpi-card panel">
+                <p class="kpi-label">
+                    <span class="help-label">
+                        <span class="help-label-text">Win Rate</span>
+                        <span class="help-tooltip">
+                            <button
+                                type="button"
+                                class="help-tooltip-button"
+                                aria-label="Explain Win Rate"
+                                aria-describedby="analytics-win-rate-tooltip"
+                            >?</button>
+                            <span id="analytics-win-rate-tooltip" class="help-tooltip-bubble" role="tooltip">The percentage of your closed trades that finished profitable.</span>
+                        </span>
+                    </span>
+                </p>
+                <p class="kpi-value">{{ '%.1f'|format(summary.win_rate) }}%</p>
+                <p class="kpi-note">{{ summary.wins }}W / {{ summary.losses }}L / {{ summary.breakeven }}BE</p>
+            </article>
+            <article class="kpi-card panel">
+                <p class="kpi-label">Opened This Week</p>
+                <p class="kpi-value {% if summary.weekly_pnl > 0 %}good{% elif summary.weekly_pnl < 0 %}bad{% endif %}">
+                    {% if summary.weekly_pnl > 0 %}+{% endif %}${{ '%.2f'|format(summary.weekly_pnl) }}
+                </p>
+                <p class="kpi-note">Since {{ analytics.week_label }}</p>
+            </article>
+            <article class="kpi-card panel">
+                <p class="kpi-label">Opened This Month</p>
+                <p class="kpi-value {% if summary.monthly_pnl > 0 %}good{% elif summary.monthly_pnl < 0 %}bad{% endif %}">
+                    {% if summary.monthly_pnl > 0 %}+{% endif %}${{ '%.2f'|format(summary.monthly_pnl) }}
+                </p>
+                <p class="kpi-note">{{ summary.trading_days }} trading day{% if summary.trading_days != 1 %}s{% endif %}</p>
+            </article>
+            <article class="kpi-card panel">
+                <p class="kpi-label">
+                    <span class="help-label">
+                        <span class="help-label-text">Profit Factor</span>
+                        <span class="help-tooltip">
+                            <button
+                                type="button"
+                                class="help-tooltip-button"
+                                aria-label="Explain Profit Factor"
+                                aria-describedby="analytics-profit-factor-tooltip"
+                            >?</button>
+                            <span id="analytics-profit-factor-tooltip" class="help-tooltip-bubble" role="tooltip">Total profits from winners divided by total losses from losers. A score of 1.5 means for every $1 lost, you made $1.50 back.</span>
+                        </span>
+                    </span>
+                </p>
+                <p class="kpi-value">
+                    {% if summary.profit_factor is not none %}
+                    {{ '%.2f'|format(summary.profit_factor) }}
+                    {% else %}
+                    -
+                    {% endif %}
+                </p>
+                <p class="kpi-note">Gross profit / gross loss</p>
+            </article>
+            <article class="kpi-card panel">
+                <p class="kpi-label">
+                    <span class="help-label">
+                        <span class="help-label-text">Expectancy</span>
+                        <span class="help-tooltip">
+                            <button
+                                type="button"
+                                class="help-tooltip-button"
+                                aria-label="Explain Expectancy"
+                                aria-describedby="analytics-expectancy-tooltip"
+                            >?</button>
+                            <span id="analytics-expectancy-tooltip" class="help-tooltip-bubble" role="tooltip">Calculated as (win rate &times; avg win) &minus; (loss rate &times; avg loss). A positive number means your strategy makes money on average per trade over a large sample.</span>
+                        </span>
+                    </span>
+                </p>
+                <p class="kpi-value {% if summary.expectancy and summary.expectancy > 0 %}good{% elif summary.expectancy and summary.expectancy < 0 %}bad{% endif %}">
+                    {% if summary.expectancy is not none %}
+                    ${{ '%+.2f'|format(summary.expectancy) }}
+                    {% else %}
+                    -
+                    {% endif %}
+                </p>
+                <p class="kpi-note">Average result per closed trade</p>
+            </article>
+            <article class="kpi-card panel">
+                <p class="kpi-label">
+                    <span class="help-label">
+                        <span class="help-label-text">Max Drawdown</span>
+                        <span class="help-tooltip">
+                            <button
+                                type="button"
+                                class="help-tooltip-button"
+                                aria-label="Explain Max Drawdown"
+                                aria-describedby="analytics-max-drawdown-tooltip"
+                            >?</button>
+                            <span id="analytics-max-drawdown-tooltip" class="help-tooltip-bubble" role="tooltip">The largest peak-to-trough drop in your equity curve.</span>
+                        </span>
+                    </span>
+                </p>
+                <p class="kpi-value bad">${{ '%.2f'|format(summary.max_drawdown) }}</p>
+                <p class="kpi-note">Measured from cumulative closed-trade equity</p>
+            </article>
+            <article class="kpi-card panel">
+                <p class="kpi-label">Trade Count</p>
+                <p class="kpi-value">{{ summary.closed_trades }}</p>
+                <p class="kpi-note">{{ summary.open_trades }} open / {{ summary.total_trades }} total</p>
+            </article>
+            <article class="kpi-card panel">
+                <p class="kpi-label">
+                    <span class="help-label">
+                        <span class="help-label-text">Closed Before TP</span>
+                        <span class="help-tooltip">
+                            <button
+                                type="button"
+                                class="help-tooltip-button"
+                                aria-label="Explain Closed Before Take Profit"
+                                aria-describedby="analytics-closed-before-tp-tooltip"
+                            >?</button>
+                            <span id="analytics-closed-before-tp-tooltip" class="help-tooltip-bubble" role="tooltip">Winning trades that were exited before price reached the original take-profit level.</span>
+                        </span>
+                    </span>
+                </p>
+                <p class="kpi-value">{{ summary.closed_before_tp_count }}</p>
+                <p class="kpi-note">Profitable trades that closed before the take-profit level.</p>
+            </article>
+            <article class="kpi-card panel">
+                <p class="kpi-label">
+                    <span class="help-label">
+                        <span class="help-label-text">Closed Before SL</span>
+                        <span class="help-tooltip">
+                            <button
+                                type="button"
+                                class="help-tooltip-button"
+                                aria-label="Explain Closed Before Stop Loss"
+                                aria-describedby="analytics-closed-before-sl-tooltip"
+                            >?</button>
+                            <span id="analytics-closed-before-sl-tooltip" class="help-tooltip-bubble" role="tooltip">Losing trades that were exited before price reached the original stop-loss level.</span>
+                        </span>
+                    </span>
+                </p>
+                <p class="kpi-value">{{ summary.closed_before_sl_count }}</p>
+                <p class="kpi-note">Losing trades that closed before the stop-loss level.</p>
+            </article>
+            <article class="kpi-card panel">
+                <p class="kpi-label">
+                    <span class="help-label">
+                        <span class="help-label-text">Avg Duration</span>
+                        <span class="help-tooltip">
+                            <button
+                                type="button"
+                                class="help-tooltip-button"
+                                aria-label="Explain Average Duration"
+                                aria-describedby="analytics-avg-duration-tooltip"
+                            >?</button>
+                            <span id="analytics-avg-duration-tooltip" class="help-tooltip-bubble" role="tooltip">The average time between open and close across your trades.</span>
+                        </span>
+                    </span>
+                </p>
+                <p class="kpi-value">{{ summary.average_duration_label }}</p>
+                <p class="kpi-note">{{ '%.0f'|format(summary.duration_coverage) }}% coverage from trades with valid open and close timestamps</p>
+            </article>
+        </section>
+
+        <section class="analytics-grid">
+            <article class="panel session-panel">
+                <div class="panel-head">
+                    <div>
+                        <h2>Session Performance</h2>
+                        <p class="panel-copy">
+                            {% if analytics.session_has_reliable_pattern %}
+                            Sessions are classified from UTC trade-open timestamps against Sydney, Tokyo, London, and New York market hours.
+                            {% else %}
+                            Not enough trades yet for a reliable pattern.
+                            {% endif %}
+                        </p>
+                    </div>
+                    {% if top_session %}
+                    <span class="soft-badge">Most active: {{ top_session.name }}</span>
+                    {% endif %}
+                </div>
+                <div class="mini-chart-shell">
+                    <svg id="sessionChart" viewBox="0 0 560 240" preserveAspectRatio="xMidYMid meet" role="img" aria-label="Session net PnL chart"></svg>
+                </div>
+                <script id="analyticsSessionData" type="application/json">{{ analytics.session_stats|tojson }}</script>
+                <p class="context-note">Daylight saving shifts are handled by the underlying IANA time zone rules for each session.</p>
+            </article>
+
+            <article class="panel table-panel session-table-panel">
+                <div class="panel-head">
+                    <div>
+                        <h2>Session Breakdown</h2>
+                        <p class="panel-copy">Overlap periods will appear as combined session names.</p>
+                    </div>
+                </div>
+                <div class="table-shell analytics-table-shell">
+                    <table class="analytics-table">
+                        <thead>
+                            <tr>
+                                <th>Session</th>
+                                <th>Trades</th>
+                                <th>Win Rate</th>
+                                <th>Expectancy</th>
+                                <th>Net PnL</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for session_stat in analytics.session_stats %}
+                            <tr>
+                                <td>{{ session_stat.name }}</td>
+                                <td>{{ session_stat.count }}</td>
+                                <td>{% if session_stat.win_rate is not none %}{{ '%.1f'|format(session_stat.win_rate) }}%{% else %}-{% endif %}</td>
+                                <td class="{% if session_stat.expectancy and session_stat.expectancy > 0 %}good{% elif session_stat.expectancy and session_stat.expectancy < 0 %}bad{% endif %}">
+                                    {% if session_stat.expectancy is not none %}${{ '%+.2f'|format(session_stat.expectancy) }}{% else %}-{% endif %}
+                                </td>
+                                <td class="{% if session_stat.net_pnl > 0 %}good{% elif session_stat.net_pnl < 0 %}bad{% endif %}">
+                                    ${{ '%+.2f'|format(session_stat.net_pnl) }}
+                                </td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            </article>
+
+            <article class="panel table-panel pair-panel">
+                <div class="panel-head">
+                    <div>
+                        <h2>Pair Breakdown</h2>
+                        <p class="panel-copy">
+                            {% if analytics.pair_has_reliable_pattern %}
+                                {% if summary.pair_sample_is_diverse %}
+                            Where your edge is concentrated right now.
+                                {% else %}
+                            Most of your trades are concentrated in one pair, so use this as concentration context rather than a broad pattern.
+                                {% endif %}
+                            {% else %}
+                            Not enough trades yet for a reliable pattern.
+                            {% endif %}
+                        </p>
+                    </div>
+                    {% if top_pair %}
+                    <span class="soft-badge">Most traded: {{ top_pair.symbol }}</span>
+                    {% endif %}
+                </div>
+                <div class="table-shell analytics-table-shell">
+                    <table class="analytics-table">
+                        <thead>
+                            <tr>
+                                <th>Pair</th>
+                                <th>Trades</th>
+                                <th>Win Rate</th>
+                                <th>Expectancy</th>
+                                <th>Net PnL</th>
+                                <th>PF</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for pair in analytics.pair_stats %}
+                            <tr>
+                                <td>{{ pair.symbol }}</td>
+                                <td>{{ pair.count }}</td>
+                                <td>{% if pair.win_rate is not none %}{{ '%.1f'|format(pair.win_rate) }}%{% else %}-{% endif %}</td>
+                                <td class="{% if pair.expectancy and pair.expectancy > 0 %}good{% elif pair.expectancy and pair.expectancy < 0 %}bad{% endif %}">
+                                    {% if pair.expectancy is not none %}${{ '%+.2f'|format(pair.expectancy) }}{% else %}-{% endif %}
+                                </td>
+                                <td class="{% if pair.net_pnl > 0 %}good{% elif pair.net_pnl < 0 %}bad{% endif %}">
+                                    {{ '%+.2f'|format(pair.net_pnl) }}
+                                </td>
+                                <td>{% if pair.profit_factor is not none %}{{ '%.2f'|format(pair.profit_factor) }}{% else %}-{% endif %}</td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            </article>
+
+            <article class="panel chart-panel">
+                <div class="panel-head">
+                    <div>
+                        <h2>Win Rate By Day</h2>
+                        <p class="panel-copy">
+                            {% if analytics.weekday_has_reliable_pattern %}
+                            The center line is 50%. Days above 50% are favorable; days below 50% skew loss-heavy.
+                            {% else %}
+                            Not enough trades yet for a reliable pattern.
+                            {% endif %}
+                        </p>
+                    </div>
+                </div>
+                <div class="mini-chart-shell">
+                    <svg id="weekdayChart" viewBox="0 0 560 240" preserveAspectRatio="xMidYMid meet" role="img" aria-label="Weekday win rate chart"></svg>
+                </div>
+                <script id="analyticsWeekdayData" type="application/json">{{ analytics.weekday_stats|tojson }}</script>
+            </article>
+
+            <article class="panel table-panel weekday-panel">
+                <div class="panel-head">
+                    <div>
+                        <h2>Weekday Breakdown</h2>
+                        <p class="panel-copy">
+                            {% if analytics.weekday_has_reliable_pattern %}
+                            Use this to spot timing drift across the week.
+                            {% else %}
+                            Not enough trades yet for a reliable pattern.
+                            {% endif %}
+                        </p>
+                    </div>
+                </div>
+                <div class="table-shell analytics-table-shell">
+                    <table class="analytics-table">
+                        <thead>
+                            <tr>
+                                <th>Day</th>
+                                <th>Trades</th>
+                                <th>Win Rate</th>
+                                <th>Avg PnL</th>
+                                <th>Net PnL</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for weekday in analytics.weekday_stats %}
+                            <tr>
+                                <td>{{ weekday.name }}</td>
+                                <td>{{ weekday.count }}</td>
+                                <td class="{% if weekday.win_rate and weekday.win_rate > 50 %}good{% elif weekday.win_rate is not none and weekday.win_rate < 50 %}bad{% endif %}">
+                                    {% if weekday.win_rate is not none %}{{ '%.1f'|format(weekday.win_rate) }}%{% else %}-{% endif %}
+                                </td>
+                                <td class="{% if weekday.avg_pnl and weekday.avg_pnl > 0 %}good{% elif weekday.avg_pnl and weekday.avg_pnl < 0 %}bad{% endif %}">
+                                    {% if weekday.avg_pnl is not none %}{{ '%+.2f'|format(weekday.avg_pnl) }}{% else %}-{% endif %}
+                                </td>
+                                <td class="{% if weekday.net_pnl > 0 %}good{% elif weekday.net_pnl < 0 %}bad{% endif %}">
+                                    {{ '%+.2f'|format(weekday.net_pnl) }}
+                                </td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            </article>
+
+            <article class="panel equity-panel">
+                <div class="panel-head">
+                    <div>
+                        <h2>
+                            <span class="help-label">
+                                <span class="help-label-text">Equity Curve</span>
+                                <span class="help-tooltip">
+                                    <button
+                                        type="button"
+                                        class="help-tooltip-button"
+                                        aria-label="Explain Equity Curve"
+                                        aria-describedby="analytics-equity-curve-tooltip"
+                                    >?</button>
+                                    <span id="analytics-equity-curve-tooltip" class="help-tooltip-bubble" role="tooltip">Your running PnL added up trade by trade in chronological order.</span>
+                                </span>
+                            </span>
+                        </h2>
+                        <p class="panel-copy">Cumulative realized PnL across closed trades.</p>
+                    </div>
+                    <div class="chart-controls">
+                        <div class="chart-control-group">
+                            <label for="equityMode">View</label>
+                            <select id="equityMode" aria-label="Equity curve mode">
+                                <option value="trade" selected>Every Trade</option>
+                                <option value="day">Daily Close</option>
+                            </select>
+                        </div>
+                        <div class="chart-control-group">
+                            <label for="analyticsEquityRange">Range</label>
+                            <select id="analyticsEquityRange" aria-label="Equity curve range">
+                                <option value="30">30D</option>
+                                <option value="90">90D</option>
+                                <option value="all" selected>All History</option>
+                            </select>
+                        </div>
+                    </div>
+                </div>
+                <div class="chart-shell" id="equityChartShell">
+                    <svg id="equityChart" viewBox="0 0 760 280" preserveAspectRatio="xMidYMid meet" role="img" aria-label="Equity curve">
+                        <defs>
+                            <clipPath id="analyticsPositiveClip">
+                                <rect id="analyticsPositiveClipRect" x="0" y="0" width="760" height="140"></rect>
+                            </clipPath>
+                            <clipPath id="analyticsNegativeClip">
+                                <rect id="analyticsNegativeClipRect" x="0" y="140" width="760" height="140"></rect>
+                            </clipPath>
+                        </defs>
+                        <g id="equityChartGrid"></g>
+                        <path id="equityChartAreaPositive" class="chart-area positive" clip-path="url(#analyticsPositiveClip)"></path>
+                        <path id="equityChartAreaNegative" class="chart-area negative" clip-path="url(#analyticsNegativeClip)"></path>
+                        <path id="equityChartGlowPositive" class="chart-glow positive" clip-path="url(#analyticsPositiveClip)"></path>
+                        <path id="equityChartGlowNegative" class="chart-glow negative" clip-path="url(#analyticsNegativeClip)"></path>
+                        <path id="equityChartPathPositive" class="chart-path positive" clip-path="url(#analyticsPositiveClip)"></path>
+                        <path id="equityChartPathNegative" class="chart-path negative" clip-path="url(#analyticsNegativeClip)"></path>
+                        <line id="equityChartZero" class="zero-line" x1="0" x2="760" y1="0" y2="0"></line>
+                        <g id="equityChartYAxis"></g>
+                        <g id="equityChartPoints"></g>
+                    </svg>
+                    <div id="equityChartTooltip" class="chart-tooltip" hidden></div>
+                </div>
+                <div id="equityChartAxis" class="chart-axis"></div>
+                <script id="analyticsEquityTradesData" type="application/json">{{ analytics.equity_curve|tojson }}</script>
+                <script id="analyticsEquityDaysData" type="application/json">{{ analytics.daily_equity_curve|tojson }}</script>
+            </article>
+
+            <article class="panel overview-panel">
+                <div class="panel-head">
+                    <div>
+                        <h2>Performance Summary</h2>
+                        <p class="panel-copy">Your most reliable stats for edge quality and downside control.</p>
+                    </div>
+                </div>
+                <dl class="detail-list">
+                    <div>
+                        <dt>Net PnL</dt>
+                        <dd class="{% if summary.net_pnl > 0 %}good{% elif summary.net_pnl < 0 %}bad{% endif %}">
+                            {% if summary.net_pnl > 0 %}+{% endif %}${{ '%.2f'|format(summary.net_pnl) }}
+                        </dd>
+                    </div>
+                    <div>
+                        <dt>Gross Profit</dt>
+                        <dd class="good">+${{ '%.2f'|format(summary.gross_profit) }}</dd>
+                    </div>
+                    <div>
+                        <dt>Gross Loss</dt>
+                        <dd class="bad">${{ '%.2f'|format(summary.gross_loss) }}</dd>
+                    </div>
+                    <div>
+                        <dt>Average Win</dt>
+                        <dd>{% if summary.avg_win is not none %}+${{ '%.2f'|format(summary.avg_win) }}{% else %}-{% endif %}</dd>
+                    </div>
+                    <div>
+                        <dt>Average Loss</dt>
+                        <dd>{% if summary.avg_loss_abs is not none %}-${{ '%.2f'|format(summary.avg_loss_abs) }}{% else %}-{% endif %}</dd>
+                    </div>
+                    <div>
+                        <dt>
+                            <span class="help-label">
+                                <span class="help-label-text">Risk:Reward</span>
+                                <span class="help-tooltip">
+                                    <button
+                                        type="button"
+                                        class="help-tooltip-button"
+                                        aria-label="Explain Risk Reward"
+                                        aria-describedby="analytics-risk-reward-tooltip"
+                                    >?</button>
+                                    <span id="analytics-risk-reward-tooltip" class="help-tooltip-bubble" role="tooltip">Your average winning trade divided by your average losing trade, based on actual exits &mdash; not what you planned.</span>
+                                </span>
+                            </span>
+                        </dt>
+                        <dd>{% if summary.risk_reward_display %}{{ summary.risk_reward_display }}{% else %}-{% endif %}</dd>
+                    </div>
+                </dl>
+
+                {% if summary.risk_reward_mode == "account_percent" %}
+                <p class="context-note">Risk:Reward is shown as average realized loss % of account versus average realized win % of account.</p>
+                {% elif summary.risk_reward_mode == "money_ratio" %}
+                <p class="context-note">
+                    Risk:Reward is currently based on average realized loss versus average realized win in money terms.
+                    Add account size in <a href="{{ url_for('trade_accounts.trade_accounts') }}">Trade Accounts</a> to switch this to a more accurate % of account view.
+                </p>
+                {% else %}
+                <p class="context-note">
+                    Risk:Reward needs both wins and losses. Add closed trades first, then add account size in <a href="{{ url_for('trade_accounts.trade_accounts') }}">Trade Accounts</a> for a % of account view.
+                </p>
+                {% endif %}
+
+                <div class="callout-grid">
+                    <article class="callout-card">
+                        <p class="callout-label">Best Trade</p>
+                        {% if best_trade %}
+                        <p class="callout-value good">{{ '%+.2f'|format(best_trade.pnl) }}</p>
+                        <p class="callout-note">{{ best_trade.symbol }} · {{ best_trade.opened_label }}</p>
+                        {% else %}
+                        <p class="callout-value">-</p>
+                        {% endif %}
+                    </article>
+                    <article class="callout-card">
+                        <p class="callout-label">Worst Trade</p>
+                        {% if worst_trade %}
+                        <p class="callout-value bad">{{ '%+.2f'|format(worst_trade.pnl) }}</p>
+                        <p class="callout-note">{{ worst_trade.symbol }} · {{ worst_trade.opened_label }}</p>
+                        {% else %}
+                        <p class="callout-value">-</p>
+                        {% endif %}
+                    </article>
+                </div>
+            </article>
+
+            <article class="panel rr-panel">
+                <div class="panel-head">
+                    <div>
+                        <h2>Planned vs Real RR</h2>
+                        <p class="panel-copy">How much of your planned risk:reward you actually captured.</p>
+                    </div>
+                </div>
+
+                {% if rr_summary.trades_with_data >= 3 %}
+                <div class="rr-stat-grid">
+                    <article class="rr-stat-card rr-stat-card-planned">
+                        <p class="rr-stat-label">
+                            <span class="help-label">
+                                <span class="help-label-text">Avg Planned RR</span>
+                                <span class="help-tooltip">
+                                    <button
+                                        type="button"
+                                        class="help-tooltip-button"
+                                        aria-label="Explain Average Planned RR"
+                                        aria-describedby="analytics-avg-planned-rr-tooltip"
+                                    >?</button>
+                                    <span id="analytics-avg-planned-rr-tooltip" class="help-tooltip-bubble" role="tooltip">The reward-to-risk you targeted before entry, calculated from your stop loss and take profit levels.</span>
+                                </span>
+                            </span>
+                        </p>
+                        <p class="rr-stat-value">{{ '%.2f'|format(rr_summary.avg_planned_rr) }}R</p>
+                    </article>
+                    <article class="rr-stat-card rr-stat-card-real">
+                        <p class="rr-stat-label">
+                            <span class="help-label">
+                                <span class="help-label-text">Avg Real RR</span>
+                                <span class="help-tooltip">
+                                    <button
+                                        type="button"
+                                        class="help-tooltip-button"
+                                        aria-label="Explain Average Real RR"
+                                        aria-describedby="analytics-avg-real-rr-tooltip"
+                                    >?</button>
+                                    <span id="analytics-avg-real-rr-tooltip" class="help-tooltip-bubble" role="tooltip">The reward-to-risk you actually closed with, based on real entry and exit prices.</span>
+                                </span>
+                            </span>
+                        </p>
+                        <p class="rr-stat-value {{ rr_value_tone }}">
+                            {{ '%.2f'|format(rr_summary.avg_actual_rr) }}R
+                        </p>
+                    </article>
+                    <article class="rr-stat-card rr-stat-card-capture">
+                        <p class="rr-stat-label">
+                            <span class="help-label">
+                                <span class="help-label-text">Capture Rate</span>
+                                <span class="help-tooltip">
+                                    <button
+                                        type="button"
+                                        class="help-tooltip-button"
+                                        aria-label="Explain Capture Rate"
+                                        aria-describedby="analytics-capture-rate-tooltip"
+                                    >?</button>
+                                    <span id="analytics-capture-rate-tooltip" class="help-tooltip-bubble" role="tooltip">Your real RR divided by your planned RR. 80% means you captured 80% of your intended setup.</span>
+                                </span>
+                            </span>
+                        </p>
+                        <p class="rr-stat-value {{ rr_value_tone }}">
+                            {{ '%.0f'|format(rr_ratio * 100) }}%
+                        </p>
+                    </article>
+                </div>
+                <p class="rr-advice">{{ rr_summary.advice }}</p>
+                <p class="context-note">Based on {{ rr_summary.trades_with_data }} trades with SL &amp; TP set.</p>
+                {% else %}
+                <div class="rr-empty-card">
+                    <p class="rr-advice muted">
+                        {% if rr_summary.trades_with_data > 0 %}
+                        {{ rr_summary.advice }} ({{ rr_summary.trades_with_data }} trade{% if rr_summary.trades_with_data != 1 %}s{% endif %} so far - need 3 minimum.)
+                        {% else %}
+                        {{ rr_summary.advice }}
+                        {% endif %}
+                    </p>
+                </div>
+                {% endif %}
+            </article>
+
+            <article class="panel streak-panel">
+                <div class="panel-head">
+                    <div>
+                        <h2>Streak Tracking</h2>
+                        <p class="panel-copy">Current run plus best historical streaks.</p>
+                    </div>
+                </div>
+                <div class="streak-grid">
+                    <article class="streak-card">
+                        <p class="streak-label">Current</p>
+                        <p class="streak-value">
+                            {% if streaks.current_length %}
+                            {{ streaks.current_type|capitalize }} x{{ streaks.current_length }}
+                            {% else %}
+                            None
+                            {% endif %}
+                        </p>
+                    </article>
+                    <article class="streak-card">
+                        <p class="streak-label">Best Win Streak</p>
+                        <p class="streak-value good">x{{ streaks.best_win_streak }}</p>
+                    </article>
+                    <article class="streak-card">
+                        <p class="streak-label">Best Loss Streak</p>
+                        <p class="streak-value bad">x{{ streaks.best_loss_streak }}</p>
+                    </article>
+                </div>
+                <p class="context-note">Streaks are calculated from closed trades in chronological order.</p>
+            </article>
+
+        </section>
+        {% endif %}
+    </div>
+</section>
+<style>
+    main {
+        max-width: none;
+        margin: 0;
+        padding: 0;
+        min-height: 100vh;
+    }
+
+    .analytics-shell {
+        min-height: 100vh;
+        padding: clamp(0.9rem, 2vw, 1.5rem);
+    }
+
+    .analytics-content {
+        display: grid;
+        gap: 0.9rem;
+    }
+
+    .panel {
+        border: 1px solid color-mix(in srgb, var(--border) 82%, transparent);
+        border-radius: 16px;
+        background: color-mix(in srgb, var(--card) 72%, transparent);
+        box-shadow: 0 14px 32px rgba(2, 6, 23, 0.16);
+        padding: 1rem;
+        min-width: 0;
+    }
+
+    .analytics-hero {
+        display: flex;
+        justify-content: space-between;
+        gap: 1rem;
+        align-items: flex-start;
+    }
+
+    .eyebrow {
+        margin: 0 0 0.45rem;
+        font-size: 0.78rem;
+        font-weight: 800;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+        color: var(--accent);
+    }
+
+    h1 {
+        margin: 0;
+        font-size: clamp(1.4rem, 2.8vw, 2.4rem);
+        color: var(--ink);
+    }
+
+    h2 {
+        margin: 0;
+        font-size: 1.02rem;
+        color: var(--ink);
+    }
+
+    .hero-copy,
+    .hero-help,
+    .panel-copy,
+    .context-note {
+        margin: 0.4rem 0 0;
+        color: var(--muted);
+        font-size: 0.92rem;
+    }
+
+    .hero-meta {
+        display: flex;
+        gap: 0.6rem;
+        flex-wrap: wrap;
+        justify-content: flex-end;
+    }
+
+    .meta-chip,
+    .soft-badge {
+        border: 1px solid color-mix(in srgb, var(--border) 84%, transparent);
+        border-radius: 999px;
+        background: color-mix(in srgb, var(--surface) 68%, transparent);
+        padding: 0.6rem 0.8rem;
+        min-width: 0;
+    }
+
+    .meta-chip span,
+    .soft-badge {
+        display: block;
+        font-size: 0.72rem;
+        font-weight: 700;
+        letter-spacing: 0.05em;
+        text-transform: uppercase;
+        color: var(--muted);
+    }
+
+    .meta-chip strong {
+        display: block;
+        margin-top: 0.2rem;
+        font-size: 0.92rem;
+        color: var(--ink);
+    }
+
+    .soft-badge {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        min-height: 38px;
+        color: var(--muted);
+    }
+
+    .empty-state {
+        text-align: center;
+        padding: 2rem 1rem;
+    }
+
+    .empty-state h2 {
+        font-size: 1.2rem;
+    }
+
+    .empty-state p {
+        max-width: 620px;
+        margin: 0.65rem auto 0;
+        color: var(--muted);
+    }
+
+    .empty-actions {
+        margin-top: 1rem;
+        display: flex;
+        gap: 0.65rem;
+        justify-content: center;
+        flex-wrap: wrap;
+    }
+
+    .empty-step-grid {
+        display: grid;
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+        gap: 0.75rem;
+        margin-top: 1rem;
+    }
+
+    .empty-step-card {
+        border: 1px solid color-mix(in srgb, var(--border) 84%, transparent);
+        border-radius: 14px;
+        padding: 0.95rem 0.9rem;
+        background: color-mix(in srgb, var(--surface) 76%, transparent);
+        text-align: left;
+    }
+
+    .empty-step-label,
+    .empty-step-title,
+    .empty-step-copy {
+        margin: 0;
+    }
+
+    .empty-step-label {
+        font-size: 0.72rem;
+        font-weight: 800;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+        color: var(--muted);
+    }
+
+    .empty-step-title {
+        margin-top: 0.32rem;
+        font-size: 0.96rem;
+        font-weight: 800;
+        color: var(--ink);
+    }
+
+    .empty-step-copy {
+        margin-top: 0.28rem;
+        color: var(--muted);
+        line-height: 1.5;
+    }
+
+    .ghost-btn,
+    .trades-btn {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        min-height: 40px;
+        padding: 0 0.92rem;
+        border-radius: 10px;
+        font-size: 0.76rem;
+        font-weight: 800;
+        letter-spacing: 0.04em;
+        text-transform: uppercase;
+        text-decoration: none;
+    }
+
+    .trades-btn {
+        border: 1px solid color-mix(in srgb, var(--good) 62%, var(--border));
+        background: color-mix(in srgb, var(--good) 16%, var(--card));
+        color: color-mix(in srgb, var(--good) 82%, white 18%);
+        box-shadow: 0 10px 22px rgba(34, 197, 94, 0.14);
+    }
+
+    .ghost-btn {
+        border: 1px solid color-mix(in srgb, var(--border) 84%, transparent);
+        background: color-mix(in srgb, var(--surface) 72%, transparent);
+        color: var(--ink);
+    }
+
+    .kpi-grid {
+        display: grid;
+        grid-template-columns: repeat(4, minmax(0, 1fr));
+        gap: 0.9rem;
+    }
+
+    .kpi-grid > :nth-last-child(2):nth-child(4n + 1) {
+        grid-column: 2;
+    }
+
+    .kpi-grid > :last-child:nth-child(4n + 2) {
+        grid-column: 3;
+    }
+
+    .kpi-card {
+        padding: 0.95rem 1rem;
+        text-align: center;
+    }
+
+    .kpi-label {
+        margin: 0;
+        font-size: 0.76rem;
+        font-weight: 800;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+        color: var(--muted);
+    }
+
+    .kpi-value {
+        margin: 0.42rem 0 0;
+        font-size: clamp(1.28rem, 2vw, 1.88rem);
+        font-weight: 800;
+        color: var(--ink);
+    }
+
+    .kpi-note {
+        margin: 0.28rem 0 0;
+        color: var(--muted);
+        font-size: 0.84rem;
+    }
+
+    .analytics-grid {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        grid-template-areas:
+            "session sessiontable"
+            "overview pair"
+            "chart weekday"
+            "equity equity"
+            "streak rr";
+        gap: 0.9rem;
+        align-items: stretch;
+    }
+
+    .equity-panel {
+        grid-area: equity;
+    }
+
+    .overview-panel { grid-area: overview; }
+
+    .streak-panel { grid-area: streak; }
+
+    .rr-panel {
+        grid-area: rr;
+        min-height: 210px;
+        padding: 1.1rem 1.15rem 1rem;
+    }
+
+    .chart-panel { grid-area: chart; }
+
+    .session-panel { grid-area: session; }
+
+    .pair-panel { grid-area: pair; }
+
+    .weekday-panel { grid-area: weekday; }
+
+    .session-table-panel { grid-area: sessiontable; }
+
+    .table-panel {
+        display: flex;
+        flex-direction: column;
+    }
+
+    .panel-head {
+        display: flex;
+        justify-content: space-between;
+        gap: 0.75rem;
+        align-items: flex-start;
+        margin-bottom: 0.85rem;
+    }
+
+    .chart-controls {
+        display: inline-flex;
+        align-items: center;
+        gap: 0.5rem;
+        flex-wrap: wrap;
+        justify-content: flex-end;
+        color: var(--muted);
+        font-size: 0.82rem;
+        font-weight: 700;
+    }
+
+    .chart-control-group {
+        display: inline-flex;
+        align-items: center;
+        gap: 0.5rem;
+    }
+
+    .chart-controls select {
+        min-height: 38px;
+        border-radius: 10px;
+        border: 1px solid color-mix(in srgb, var(--border) 88%, transparent);
+        background: color-mix(in srgb, var(--surface) 80%, transparent);
+        color: var(--ink);
+        padding: 0 0.8rem;
+        font: inherit;
+    }
+
+    .chart-shell,
+    .mini-chart-shell {
+        position: relative;
+        border-radius: 14px;
+        border: 1px solid color-mix(in srgb, var(--border) 82%, transparent);
+        background:
+            radial-gradient(circle at top, color-mix(in srgb, var(--accent) 10%, transparent), transparent 58%),
+            color-mix(in srgb, var(--surface) 82%, transparent);
+        overflow: hidden;
+    }
+
+    .chart-shell {
+        min-height: 280px;
+        padding: 0.45rem;
+    }
+
+    .mini-chart-shell {
+        min-height: 240px;
+        padding: 0.35rem;
+    }
+
+    #equityChart,
+    #weekdayChart,
+    #sessionChart {
+        display: block;
+        width: 100%;
+        height: auto;
+    }
+
+    .chart-axis {
+        display: flex;
+        position: relative;
+        min-height: 1.4rem;
+        margin-top: 0.35rem;
+    }
+
+    .chart-axis .axis-label {
+        position: absolute;
+        transform: translateX(-50%);
+        font-size: 0.72rem;
+        color: var(--muted);
+        white-space: nowrap;
+    }
+
+    .chart-tooltip {
+        position: absolute;
+        z-index: 2;
+        transform: translate(-50%, calc(-100% - 10px));
+        border-radius: 10px;
+        border: 1px solid color-mix(in srgb, var(--border) 84%, transparent);
+        background: color-mix(in srgb, var(--card) 94%, transparent);
+        color: var(--ink);
+        padding: 0.45rem 0.6rem;
+        font-size: 0.76rem;
+        font-weight: 700;
+        box-shadow: 0 12px 30px rgba(2, 6, 23, 0.2);
+        pointer-events: none;
+        white-space: nowrap;
+    }
+
+    .chart-area {
+        fill: none;
+    }
+
+    .chart-area.positive {
+        fill: rgba(79, 185, 128, 0.24);
+    }
+
+    .chart-area.negative {
+        fill: rgba(239, 68, 68, 0.18);
+    }
+
+    .chart-glow {
+        fill: none;
+        stroke-width: 4.6;
+        opacity: 0.18;
+        stroke-linecap: round;
+        stroke-linejoin: round;
+        stroke-dasharray: 1600;
+        stroke-dashoffset: 1600;
+        animation: draw-line 4.4s var(--curve-draw-ease) forwards;
+    }
+
+    .chart-glow.positive,
+    .chart-path.positive {
+        stroke: var(--good);
+    }
+
+    .chart-glow.negative,
+    .chart-path.negative {
+        stroke: var(--bad);
+    }
+
+    .chart-path {
+        fill: none;
+        stroke-width: 1.4;
+        stroke-linecap: round;
+        stroke-linejoin: round;
+        stroke-dasharray: 1600;
+        stroke-dashoffset: 1600;
+        animation: draw-line 4.4s var(--curve-draw-ease) forwards;
+    }
+
+    .chart-area {
+        opacity: 0;
+        animation: area-fade 3.6s ease forwards;
+    }
+
+    .grid-line {
+        stroke: color-mix(in srgb, var(--border) 68%, transparent);
+        stroke-width: 1;
+    }
+
+    .zero-line {
+        stroke: color-mix(in srgb, #334155 82%, transparent);
+        stroke-width: 1.6;
+        stroke-dasharray: 6 4;
+    }
+
+    .y-axis-tick {
+        display: none;
+    }
+
+    .y-axis-label {
+        fill: #ffffff;
+        font-size: 10px;
+        font-weight: 800;
+        letter-spacing: 0.02em;
+        paint-order: stroke;
+        stroke: rgba(15, 23, 42, 0.72);
+        stroke-width: 1.4px;
+        stroke-linejoin: round;
+        text-rendering: geometricPrecision;
+    }
+
+    .chart-point {
+        fill: color-mix(in srgb, var(--card) 85%, transparent);
+        stroke-width: 1.3;
+    }
+
+    .chart-point.positive {
+        stroke: var(--good);
+    }
+
+    .chart-point.negative {
+        stroke: var(--bad);
+    }
+
+    .chart-point.flat {
+        stroke: #334155;
+    }
+
+    .detail-list {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 0.75rem;
+        margin: 0;
+    }
+
+    @keyframes draw-line {
+        to { stroke-dashoffset: 0; }
+    }
+
+    @keyframes area-fade {
+        to { opacity: 1; }
+    }
+
+    .detail-list div {
+        border: 1px solid color-mix(in srgb, var(--border) 84%, transparent);
+        border-radius: 14px;
+        padding: 0.8rem 0.9rem;
+        background: color-mix(in srgb, var(--surface) 72%, transparent);
+    }
+
+    .detail-list dt {
+        margin: 0;
+        font-size: 0.76rem;
+        font-weight: 800;
+        letter-spacing: 0.05em;
+        text-transform: uppercase;
+        color: var(--muted);
+    }
+
+    .detail-list dd {
+        margin: 0.35rem 0 0;
+        font-size: 1.06rem;
+        font-weight: 800;
+        color: var(--ink);
+    }
+
+    .callout-grid,
+    .streak-grid {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 0.75rem;
+        margin-top: 0.85rem;
+    }
+
+    .streak-grid {
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+        margin-top: 0;
+    }
+
+    .callout-card,
+    .streak-card {
+        border: 1px solid color-mix(in srgb, var(--border) 84%, transparent);
+        border-radius: 14px;
+        padding: 0.85rem 0.9rem;
+        background: color-mix(in srgb, var(--surface) 72%, transparent);
+    }
+
+    .callout-label,
+    .streak-label {
+        margin: 0;
+        font-size: 0.74rem;
+        font-weight: 800;
+        letter-spacing: 0.06em;
+        text-transform: uppercase;
+        color: var(--muted);
+    }
+
+    .callout-value,
+    .streak-value {
+        margin: 0.34rem 0 0;
+        font-size: 1.16rem;
+        font-weight: 800;
+        color: var(--ink);
+    }
+
+    .callout-note {
+        margin: 0.28rem 0 0;
+        color: var(--muted);
+        font-size: 0.82rem;
+    }
+
+    .rr-stat-grid {
+        display: grid;
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+        gap: 0.75rem;
+        margin: 0.75rem 0 0.7rem;
+    }
+
+    .rr-stat-card,
+    .rr-empty-card {
+        border: 1px solid color-mix(in srgb, var(--border) 84%, transparent);
+        border-radius: 14px;
+        background: color-mix(in srgb, var(--surface) 74%, transparent);
+        box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.03);
+    }
+
+    .rr-stat-card {
+        min-width: 0;
+        padding: 0.95rem 1rem 0.9rem;
+    }
+
+    .rr-empty-card {
+        padding: 0.95rem 1rem;
+        margin-top: 0.75rem;
+    }
+
+    .rr-stat-label {
+        margin: 0 0 0.2rem;
+        font-size: 0.78rem;
+        font-weight: 800;
+        letter-spacing: 0.04em;
+        text-transform: uppercase;
+        color: var(--muted);
+    }
+
+    .rr-stat-value {
+        margin: 0;
+        font-size: clamp(1.4rem, 2vw, 1.72rem);
+        font-weight: 800;
+        letter-spacing: -0.03em;
+        color: var(--ink);
+    }
+
+    .rr-advice {
+        margin: 0.15rem 0 0;
+        font-size: 0.88rem;
+        line-height: 1.5;
+        color: var(--ink);
+    }
+
+    .rr-advice.muted {
+        color: var(--muted);
+    }
+
+    .table-shell {
+        overflow: auto;
+        border-radius: 14px;
+        border: 1px solid color-mix(in srgb, var(--border) 82%, transparent);
+        background: color-mix(in srgb, var(--surface) 72%, transparent);
+    }
+
+    .table-panel .analytics-table-shell {
+        display: flex;
+        flex: 1;
+        min-height: 0;
+    }
+
+    .analytics-table {
+        width: 100%;
+        border-collapse: collapse;
+        min-width: 640px;
+    }
+
+    .table-panel .analytics-table {
+        height: 100%;
+    }
+
+    .analytics-table th,
+    .analytics-table td {
+        padding: 0.82rem 0.88rem;
+        text-align: left;
+        border-bottom: 1px solid color-mix(in srgb, var(--border) 72%, transparent);
+        font-size: 0.86rem;
+        white-space: nowrap;
+    }
+
+    .table-panel .analytics-table th,
+    .table-panel .analytics-table td {
+        padding-top: 0.95rem;
+        padding-bottom: 0.95rem;
+    }
+
+    .analytics-table th {
+        position: sticky;
+        top: 0;
+        z-index: 1;
+        background: color-mix(in srgb, var(--surface) 96%, transparent);
+        color: var(--muted);
+        font-size: 0.75rem;
+        font-weight: 800;
+        letter-spacing: 0.06em;
+        text-transform: uppercase;
+    }
+
+    .analytics-table tbody tr:last-child td {
+        border-bottom: none;
+    }
+
+    .good {
+        color: var(--good) !important;
+    }
+
+    .bad {
+        color: var(--bad) !important;
+    }
+
+    @media (max-width: 1180px) {
+        .kpi-grid {
+            grid-template-columns: repeat(2, minmax(0, 1fr));
+        }
+
+        .kpi-grid > :nth-last-child(2):nth-child(4n + 1),
+        .kpi-grid > :last-child:nth-child(4n + 2) {
+            grid-column: auto;
+        }
+
+        .analytics-grid {
+            grid-template-columns: 1fr;
+            grid-template-areas:
+                "session"
+                "sessiontable"
+                "pair"
+                "chart"
+                "weekday"
+                "equity"
+                "overview"
+                "rr"
+                "streak";
+        }
+
+        .rr-stat-grid {
+            grid-template-columns: 1fr;
+        }
+    }
+
+    @media (max-width: 760px) {
+        .analytics-shell {
+            padding: 0.9rem;
+        }
+
+        .analytics-hero,
+        .panel-head {
+            flex-direction: column;
+        }
+
+        .hero-meta {
+            justify-content: flex-start;
+        }
+
+        .kpi-grid,
+        .empty-step-grid,
+        .detail-list,
+        .callout-grid,
+        .streak-grid {
+            grid-template-columns: 1fr;
+        }
+
+        .analytics-table {
+            min-width: 560px;
+        }
+    }
+</style>
+
+{% endblock %}
+
+{% block page_scripts %}
+<script src="{{ url_for('static', filename='js/analytics_page.js') }}"></script>
+{% endblock %}

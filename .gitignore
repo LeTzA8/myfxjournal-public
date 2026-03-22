@@ -1,7 +1,56 @@
-# Public mirror safety guard.
-# This repository intentionally tracks only a minimal public-safe subset.
+# Local environment and secrets
+.env
+.env.*
+*.env
+fxjournal.env
 
-*
-!/.gitignore
-!/.gitattributes
-!/README.md
+# Python cache / local tooling
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+env/
+ENV/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# Local app data
+instance/
+*.db
+*.sqlite
+*.sqlite3
+*.db-journal
+*.sqlite-shm
+*.sqlite-wal
+*.log
+*.pid
+
+# Editor / machine-local files
+.claude/
+.vscode/
+.idea/
+.python-version
+runtime.txt
+.DS_Store
+Thumbs.db
+
+# Private moat kept out of the public repo
+ai_service.py
+prompts/
+celery_app.py
+celery_workers/
+models.py
+routes/dashboard.py
+routes/checkin.py
+routes/mt5_internal.py
+trading.py
+migrations/
+tests/
+static/ai review.png
+static/analytics.png
+static/dashboard.png
+static/js/dashboard_page.js
+templates/checkin.html
+templates/emails/weekly-review.html
+templates/index.html

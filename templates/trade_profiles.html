@@ -1,0 +1,205 @@
+{% extends "base.html" %}
+
+{% block content %}
+<section class="dash-wrap">
+    <div class="dash-content">
+        <header class="dash-head">
+            <div class="crumb"><a href="{{ url_for('dashboard.home') }}">Dashboard</a> / Strategies</div>
+            <div class="head-row">
+                <div>
+                    <h1>Strategies</h1>
+                    <p class="welcome">Welcome, {{ username }}.</p>
+                    <p class="subtitle">Create and version the strategies you want to attach to trades.</p>
+                </div>
+                <div class="head-actions">
+                    <a class="ghost-link" href="{{ url_for('trades.trades') }}">Back to Trades</a>
+                    <a class="ghost-link" href="{{ url_for('account.account') }}">Account</a>
+                </div>
+            </div>
+        </header>
+
+        <section class="profile-grid">
+            <article class="panel profile-list-panel">
+                <div class="panel-head">
+                    <h2>Strategy Library</h2>
+                    <span class="soft">{{ trade_profiles|length }} active</span>
+                </div>
+                <div class="profile-list">
+                    {% for profile in trade_profiles %}
+                    {% set version = profile_versions.get(profile.id) %}
+                    <article class="profile-card{% if edit_target and edit_target.id == profile.id %} is-editing{% endif %}">
+                        <div class="profile-card-head">
+                            <div>
+                                <h3>{{ profile.name }}</h3>
+                                <p class="profile-meta">v{{ profile.current_version_number }}</p>
+                            </div>
+                            <div class="profile-card-actions">
+                                <a href="{{ url_for('trade_profiles.strategies', edit=profile.pubkey) }}" class="edit-link">Edit</a>
+                                <form action="{{ url_for('trade_profiles.archive_strategy', profile_pubkey=profile.pubkey) }}" method="post">
+                                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                                    <button type="submit" class="archive-btn">Archive</button>
+                                </form>
+                            </div>
+                        </div>
+                        <p class="profile-description">{{ version.short_description if version and version.short_description else "No description added yet. Include the setup idea, trigger, or rules you want to remember when tagging trades." }}</p>
+                    </article>
+                    {% else %}
+                    <p class="empty-copy">No strategies yet. Create your first one on the right, then attach it to trades so you can review performance by setup instead of memory.</p>
+                    {% endfor %}
+                </div>
+            </article>
+
+            <article class="panel profile-form-panel">
+                <div class="panel-head">
+                    <h2>{% if edit_target %}Edit Strategy{% else %}New Strategy{% endif %}</h2>
+                    <span class="soft">{% if edit_target %}Creates new version{% else %}Version 1{% endif %}</span>
+                </div>
+                {% if not edit_target %}
+                <p class="empty-copy">Start with the setup name and a short description of the entry model, confirmation, or execution rules you want to track.</p>
+                {% endif %}
+                <form
+                    action="{% if edit_target %}{{ url_for('trade_profiles.edit_strategy', profile_pubkey=edit_target.pubkey) }}{% else %}{{ url_for('trade_profiles.strategies') }}{% endif %}"
+                    method="post"
+                    class="profile-form"
+                >
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                    <label for="name">Strategy Name</label>
+                    <input
+                        id="name"
+                        name="name"
+                        type="text"
+                        maxlength="80"
+                        value="{% if edit_target %}{{ edit_target.name }}{% endif %}"
+                        placeholder="ICT Venom, Mean Reversal, NY Open Sweep..."
+                        required
+                    >
+
+                    <label for="short_description">Strategy Description</label>
+                    <textarea
+                        id="short_description"
+                        name="short_description"
+                        rows="6"
+                        placeholder="Short summary of the setup, trigger, or the latest version change..."
+                    >{% if edit_target %}{% set edit_version = profile_versions.get(edit_target.id) %}{{ edit_version.short_description if edit_version and edit_version.short_description else "" }}{% endif %}</textarea>
+
+                    <div class="form-actions">
+                        <button type="submit" class="submit-btn">{% if edit_target %}Save New Version{% else %}Create Profile{% endif %}</button>
+                        {% if edit_target %}
+                        <a href="{{ url_for('trade_profiles.strategies') }}" class="ghost-link">Cancel</a>
+                        {% endif %}
+                    </div>
+                </form>
+            </article>
+        </section>
+    </div>
+</section>
+
+<style>
+    .panel {
+        border-radius: 14px;
+        padding: 0.9rem;
+        min-width: 0;
+    }
+
+    h2 {
+        margin: 0;
+        font-size: 1rem;
+    }
+
+    .profile-grid { display: grid;
+        grid-template-columns: minmax(0, 1.15fr) minmax(320px, 0.85fr);
+        gap: 0.8rem; }
+
+    .profile-list-panel,
+    .profile-form-panel {
+        overflow: hidden;
+    }
+
+    .profile-list,
+    .profile-form { display: grid;
+        gap: 0.75rem; }
+
+    .profile-card { border: 1px solid color-mix(in srgb, var(--border) 82%, transparent);
+        border-radius: 14px;
+        padding: 0.85rem;
+        background: color-mix(in srgb, var(--surface) 95%, transparent); }
+
+    .profile-card.is-editing { border-color: color-mix(in srgb, var(--accent) 48%, var(--border));
+        box-shadow: 0 0 0 1px color-mix(in srgb, var(--accent) 18%, transparent); }
+
+    .profile-card-head { display: flex;
+        align-items: flex-start;
+        justify-content: space-between;
+        gap: 0.75rem; }
+
+    .profile-card h3 { margin: 0 0 0.2rem;
+        font-size: 0.96rem; }
+
+    .profile-meta,
+    .profile-description,
+    .empty-copy { margin: 0; }
+
+    .profile-meta { font-size: 0.78rem;
+        font-weight: 700;
+        text-transform: uppercase;
+        letter-spacing: 0.04em;
+        color: var(--muted); }
+
+    .profile-description,
+    .empty-copy { font-size: 0.9rem;
+        line-height: 1.5; }
+
+    .profile-card-actions { display: flex;
+        align-items: center;
+        gap: 0.45rem;
+        flex-wrap: wrap; }
+
+    .edit-link,
+    .archive-btn { display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        min-height: 36px;
+        border-radius: 10px;
+        padding: 0.4rem 0.7rem;
+        font-size: 0.76rem;
+        font-weight: 800;
+        text-transform: uppercase;
+        letter-spacing: 0.04em;
+        text-decoration: none; }
+
+    .edit-link { border: 1px solid color-mix(in srgb, var(--accent) 44%, var(--border)); }
+
+    .archive-btn { border: 1px solid color-mix(in srgb, var(--bad) 42%, var(--border));
+        background: color-mix(in srgb, var(--bad) 10%, var(--card));
+        color: color-mix(in srgb, var(--bad) 84%, white 16%);
+        cursor: pointer; }
+
+    .profile-form label { font-size: 0.82rem;
+        font-weight: 700;
+        text-transform: uppercase;
+        letter-spacing: 0.04em; }
+
+    .profile-form input,
+    .profile-form textarea { width: 100%;
+        border: 1px solid #c7d5cb;
+        border-radius: 10px;
+        padding: 0.68rem 0.75rem;
+        font: inherit; }
+
+    .profile-form textarea { resize: vertical;
+        min-height: 150px; }
+
+    .profile-alert { margin: 0 0 0.75rem;
+        border-radius: 10px;
+        padding: 0.65rem 0.8rem;
+        font-weight: 700; }
+
+    .profile-alert.success { border: 1px solid #b5dcc2; }
+    .profile-alert.error { border: 1px solid #e6c1bf; }
+    .profile-alert.info { border: 1px solid #bfd8e7; }
+
+    @media (max-width: 900px) {
+        .profile-grid { grid-template-columns: 1fr; }
+    }
+</style>
+{% endblock %}

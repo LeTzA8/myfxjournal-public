@@ -1,0 +1,865 @@
+{% extends "base.html" %}
+
+{% block content %}
+<section class="dash-wrap admin-access">
+    <div class="dash-content">
+        <header class="dash-head">
+            <div class="head-row admin-head-row">
+                <div>
+                    <p class="admin-kicker">Restricted Internal Area</p>
+                    <h1>Access Control</h1>
+                    <p class="welcome">Signed in as {{ username }}.</p>
+                    <p class="subtitle">Review registrations, control admin access, and manage signup codes without exposing these routes to normal users.</p>
+                </div>
+                <div class="admin-head-meta">
+                    <span class="chip {{ 'root-chip' if is_root_admin else 'default' }}">
+                        {{ "Root Admin" if is_root_admin else "DB Admin" }}
+                    </span>
+                    <span class="soft">Env + account-state gated</span>
+                </div>
+            </div>
+        </header>
+
+        <section class="admin-summary-grid">
+            <article class="panel summary-card">
+                <p class="summary-label">Pending</p>
+                <p class="summary-value">{{ overview.pending_users }}</p>
+                <p class="summary-note">Awaiting manual review</p>
+            </article>
+            <article class="panel summary-card">
+                <p class="summary-label">Approved</p>
+                <p class="summary-value good">{{ overview.approved_users }}</p>
+                <p class="summary-note">Can access the app</p>
+            </article>
+            <article class="panel summary-card">
+                <p class="summary-label">Rejected</p>
+                <p class="summary-value bad">{{ overview.rejected_users }}</p>
+                <p class="summary-note">Explicitly blocked</p>
+            </article>
+            <article class="panel summary-card">
+                <p class="summary-label">Signup Codes</p>
+                <p class="summary-value">{{ overview.signup_codes }}</p>
+                <p class="summary-note">Referral and invite links</p>
+            </article>
+            <article class="panel summary-card">
+                <p class="summary-label">MT5 Accounts</p>
+                <p class="summary-value">{{ overview.mt5_accounts }}</p>
+                <p class="summary-note">Root-admin sync targets</p>
+            </article>
+        </section>
+
+        <section class="panel control-panel">
+            <div class="panel-head">
+                <h2>Runtime Controls</h2>
+                <span class="soft">Env backed</span>
+            </div>
+            <div class="control-grid">
+                <div class="control-item">
+                    <span class="control-label">Registration Paused</span>
+                    <span class="{{ 'bad' if registration_paused else 'good' }}">{{ "Yes" if registration_paused else "No" }}</span>
+                </div>
+                <div class="control-item">
+                    <span class="control-label">Auto Approve New Users</span>
+                    <span class="{{ 'good' if auto_approve_new_users else 'bad' }}">{{ "Yes" if auto_approve_new_users else "No" }}</span>
+                </div>
+                <div class="control-item">
+                    <span class="control-label">Signup Code Mode</span>
+                    <span>{{ signup_code_mode|replace('_', ' ')|title }}</span>
+                </div>
+                <div class="control-item">
+                    <span class="control-label">Admin Gate</span>
+                    <span>{{ "Root env email for writes" if is_root_admin else "Read-only unless root" }}</span>
+                </div>
+            </div>
+        </section>
+
+        <nav class="admin-tabs" aria-label="Admin Sections">
+            <a href="{{ url_for('admin_signup_users') }}" class="admin-tab{% if section == 'users' %} is-active{% endif %}">Users</a>
+            <a href="{{ url_for('admin_signup_codes') }}" class="admin-tab{% if section == 'codes' %} is-active{% endif %}">Codes</a>
+            {% if is_root_admin %}
+            <a href="{{ url_for('admin_mt5_accounts') }}" class="admin-tab{% if section == 'mt5' %} is-active{% endif %}">MT5</a>
+            {% endif %}
+        </nav>
+
+        {% if section == "users" %}
+        <section class="panel-grid admin-main-grid">
+            <article class="panel spotlight-panel">
+                <div class="panel-head">
+                    <h2>Pending Spotlight</h2>
+                    <span class="soft">{{ pending_users|length }} shown</span>
+                </div>
+                {% if pending_users %}
+                <div class="pending-list">
+                    {% for user in pending_users %}
+                    <article class="pending-card">
+                        <div class="pending-meta">
+                            <p class="pending-name">{{ user.username }}</p>
+                            <p class="pending-line">{{ user.email }}</p>
+                            <p class="pending-line">Verified: <span class="{{ 'good' if user.email_verified else 'bad' }}">{{ "Yes" if user.email_verified else "No" }}</span></p>
+                            <p class="pending-line">Code used: {{ user.signup_code_used or "None" }}</p>
+                            <p class="pending-line">Verification sent: {{ user.verification_sent_at.strftime("%Y-%m-%d %H:%M UTC") if user.verification_sent_at else "-" }}</p>
+                        </div>
+                        {% if is_root_admin %}
+                        <div class="inline-actions">
+                            <form action="{{ url_for('admin_signup_approve_user', user_id=user.id) }}" method="post">
+                                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                                <button type="submit" class="submit-btn">Approve</button>
+                            </form>
+                            <form action="{{ url_for('admin_signup_reject_user', user_id=user.id) }}" method="post">
+                                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                                <button type="submit" class="ghost-btn danger-btn">Reject</button>
+                            </form>
+                        </div>
+                        {% endif %}
+                    </article>
+                    {% endfor %}
+                </div>
+                {% else %}
+                <p class="helper-note">No users are waiting for approval right now. New verified registrations will appear here automatically when manual review is needed.</p>
+                {% endif %}
+            </article>
+
+            <article class="panel users-panel">
+                <div class="panel-head panel-head-stack">
+                    <div>
+                        <h2>Registered Users</h2>
+                        <p class="helper-note">Filter by status or inspect admin access at a glance.</p>
+                    </div>
+                    <div class="filter-row">
+                        <a href="{{ url_for('admin_signup_users', status='pending') }}" class="admin-filter{% if status_filter == 'pending' %} is-active{% endif %}">Pending</a>
+                        <a href="{{ url_for('admin_signup_users', status='approved') }}" class="admin-filter{% if status_filter == 'approved' %} is-active{% endif %}">Approved</a>
+                        <a href="{{ url_for('admin_signup_users', status='rejected') }}" class="admin-filter{% if status_filter == 'rejected' %} is-active{% endif %}">Rejected</a>
+                        <a href="{{ url_for('admin_signup_users', status='admins') }}" class="admin-filter{% if status_filter == 'admins' %} is-active{% endif %}">Admins</a>
+                        <a href="{{ url_for('admin_signup_users', status='all') }}" class="admin-filter{% if status_filter == 'all' %} is-active{% endif %}">All</a>
+                    </div>
+                </div>
+
+                {% if users %}
+                <div class="table-shell admin-table-shell">
+                    <table class="admin-table">
+                        <thead>
+                            <tr>
+                                <th>User</th>
+                                <th>Status</th>
+                                <th>Verified</th>
+                                <th>Admin</th>
+                                <th>Referral</th>
+                                <th>Last Activity</th>
+                                <th>Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for user in users %}
+                            {% set is_root_email = user.email|lower in root_admin_emails %}
+                            <tr>
+                                <td>
+                                    <div class="user-cell">
+                                        <strong>{{ user.username }}</strong>
+                                        <span>{{ user.email }}</span>
+                                    </div>
+                                </td>
+                                <td>
+                                    <span class="chip{% if user.signup_status == 'approved' %} success-chip{% elif user.signup_status == 'rejected' %} danger-chip{% elif user.signup_status == 'pending' %} default{% endif %}">
+                                        {{ user.signup_status|title }}
+                                    </span>
+                                </td>
+                                <td class="{{ 'good' if user.email_verified else 'bad' }}">{{ "Yes" if user.email_verified else "No" }}</td>
+                                <td>
+                                    {% if is_root_email %}
+                                    <span class="chip root-chip">Root</span>
+                                    {% elif user.is_admin %}
+                                    <span class="chip success-chip">DB Admin</span>
+                                    {% else %}
+                                    <span class="soft">No</span>
+                                    {% endif %}
+                                </td>
+                                <td>{{ user.signup_code_used or "-" }}</td>
+                                <td>
+                                    <div class="user-cell">
+                                        <span>Approved: {{ user.approved_at.strftime("%Y-%m-%d %H:%M UTC") if user.approved_at else "-" }}</span>
+                                        <span>Last login: {{ user.last_login_at.strftime("%Y-%m-%d %H:%M UTC") if user.last_login_at else "-" }}</span>
+                                    </div>
+                                </td>
+                                <td>
+                                    {% if is_root_admin %}
+                                    <div class="inline-actions">
+                                        {% if user.signup_status == 'pending' %}
+                                        <form action="{{ url_for('admin_signup_approve_user', user_id=user.id) }}" method="post">
+                                            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                                            <button type="submit" class="submit-btn">Approve</button>
+                                        </form>
+                                        <form action="{{ url_for('admin_signup_reject_user', user_id=user.id) }}" method="post">
+                                            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                                            <button type="submit" class="ghost-btn danger-btn">Reject</button>
+                                        </form>
+                                        {% endif %}
+                                        {% if user.signup_status == 'approved' %}
+                                        <form action="{{ url_for('admin_signup_suspend_user', user_id=user.id) }}" method="post">
+                                            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                                            <button type="submit" class="ghost-btn danger-btn">Suspend</button>
+                                        </form>
+                                        {% endif %}
+                                        {% if user.signup_status in ['rejected', 'suspended'] %}
+                                        <form action="{{ url_for('admin_signup_approve_user', user_id=user.id) }}" method="post">
+                                            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                                            <button type="submit" class="submit-btn">Reactivate</button>
+                                        </form>
+                                        {% endif %}
+                                        {% if user.signup_status == 'approved' and not is_root_email %}
+                                        <form action="{{ url_for('admin_signup_toggle_user_admin', user_id=user.id) }}" method="post">
+                                            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                                            <button type="submit" class="ghost-btn">{{ "Remove Admin" if user.is_admin else "Grant Admin" }}</button>
+                                        </form>
+                                        {% endif %}
+                                        {% set user_accounts = accounts_by_user.get(user.id, []) %}
+                                        {% if user_accounts %}
+                                        <button type="button" class="ghost-btn" onclick="openRegenAiDialog({{ user.id }})">Regen AI</button>
+                                        {% else %}
+                                        <button type="button" class="ghost-btn" disabled aria-disabled="true" title="No trade accounts available">No Accounts</button>
+                                        {% endif %}
+                                    </div>
+                                    {% else %}
+                                    <span class="soft">Read-only</span>
+                                    {% endif %}
+                                </td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+                {% else %}
+                <p class="helper-note">No users match the current filter. Try switching status tabs or clearing the current filter.</p>
+                {% endif %}
+            </article>
+        </section>
+        {% elif section == "mt5" %}
+        <section class="panel-grid admin-main-grid">
+            <article class="panel spotlight-panel">
+                <div class="panel-head">
+                    <h2>Pending MT5 Requests</h2>
+                    <span class="soft">{{ pending_mt5_requests|length }} pending</span>
+                </div>
+                <p class="helper-note">Approve or reject access requests here. Once approved, the user can submit MT5 details from the dashboard, or you can still add them manually below.</p>
+                {% if pending_mt5_requests %}
+                <div class="pending-list">
+                    {% for request_row in pending_mt5_requests %}
+                    <article class="pending-card">
+                        <div class="pending-meta">
+                            <p class="pending-name">
+                                {{ request_row.user.username if request_row.user else "Unknown User" }}
+                                {% if request_row.trade_account %}
+                                for {{ request_row.trade_account.name }}
+                                {% endif %}
+                            </p>
+                            <p class="pending-line">{{ request_row.user.email if request_row.user else "User record unavailable" }}</p>
+                            <p class="pending-line">User ID: {{ request_row.user_id }}</p>
+                            <p class="pending-line">Trade Account ID: {{ request_row.trade_account_id }}</p>
+                            <p class="pending-line">Requested: {{ request_row.created_at.strftime("%Y-%m-%d %H:%M UTC") if request_row.created_at else "-" }}</p>
+                            <p class="pending-line">Note: {{ request_row.request_note or "No note provided." }}</p>
+                        </div>
+                        <div class="inline-actions">
+                            <form action="{{ url_for('admin_mt5_approve_request', request_id=request_row.id) }}" method="post">
+                                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                                <button type="submit" class="submit-btn">Approve</button>
+                            </form>
+                            <form action="{{ url_for('admin_mt5_reject_request', request_id=request_row.id) }}" method="post">
+                                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                                <button type="submit" class="ghost-btn danger-btn">Reject</button>
+                            </form>
+                        </div>
+                    </article>
+                    {% endfor %}
+                </div>
+                {% else %}
+                <p class="helper-note">No pending MT5 access requests right now.</p>
+                {% endif %}
+            </article>
+
+            <article class="panel create-code-panel">
+                <div class="panel-head">
+                    <h2>Add MT5 Account</h2>
+                    <span class="soft">Root Admin Only</span>
+                </div>
+                <form action="{{ url_for('admin_mt5_create_account') }}" method="post" class="code-form" data-themed-validation>
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+
+                    <label for="user_id">User</label>
+                    <select id="user_id" name="user_id" required>
+                        <option value="">Select a user</option>
+                        {% for user in mt5_form_users %}
+                        <option value="{{ user.id }}">{{ user.username }} ({{ user.email }}) [ID: {{ user.id }}]</option>
+                        {% endfor %}
+                    </select>
+
+                    <label for="trade_account_id">Trade Account</label>
+                    <select id="trade_account_id" name="trade_account_id" required disabled>
+                        <option value="">Select a user first</option>
+                    </select>
+                    <p class="helper-note">Only CFD trade accounts appear here.</p>
+
+                    <label for="account_number">MT5 Account Number</label>
+                    <input id="account_number" name="account_number" type="text" maxlength="50" required>
+
+                    <label for="investor_password">Investor Password (Read-Only Only)</label>
+                    <input id="investor_password" name="investor_password" type="password" required>
+                    <p class="helper-note">Use investor/view-only credentials here, never a master password or any credential that can place trades or withdraw funds.</p>
+
+                    <label for="server">Server</label>
+                    <input id="server" name="server" type="text" maxlength="100" required>
+
+                    <button type="submit" class="submit-btn">Add MT5 Account</button>
+                </form>
+            </article>
+
+            <article class="panel codes-panel">
+                <div class="panel-head">
+                    <h2>MT5 Accounts</h2>
+                    <span class="soft">
+                        {{ mt5_accounts|length }} total{% if orphaned_mt5_count %}, {{ orphaned_mt5_count }} cleanup-only{% endif %}
+                    </span>
+                </div>
+                {% if mt5_accounts %}
+                <div class="table-shell admin-table-shell">
+                    <table class="admin-table">
+                        <thead>
+                            <tr>
+                                <th>User</th>
+                                <th>Trade Account</th>
+                                <th>MT5</th>
+                                <th>Status</th>
+                                <th>Last Synced</th>
+                                <th>Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for account in mt5_accounts %}
+                            {% set trade_count = mt5_trade_counts_by_account.get(account.id, 0) %}
+                            {% set is_orphaned = account.is_orphaned %}
+                            {% set delete_disabled = account.is_active and trade_count > 0 %}
+                            <tr>
+                                <td>
+                                    <div class="user-cell">
+                                        <strong>{{ account.user.username if account.user else "Cleanup-only MT5 record" }}</strong>
+                                        <span>{{ account.user.email if account.user else "Original user link cleared" }}</span>
+                                        <span>{{ "ID: %s"|format(account.user_id) if account.user_id is not none else "User ID removed during cleanup" }}</span>
+                                    </div>
+                                </td>
+                                <td>
+                                    <div class="user-cell">
+                                        <strong>{{ account.trade_account.name if account.trade_account else "Cleanup-only terminal record" }}</strong>
+                                        <span>{{ "ID: %s"|format(account.trade_account_id) if account.trade_account_id is not none else "Trade account ID removed during cleanup" }}</span>
+                                        <span>{{ account.trade_account.account_type if account.trade_account else "Deleted" }}</span>
+                                        <span>Trades: {{ trade_count }}</span>
+                                    </div>
+                                </td>
+                                <td>
+                                    <div class="user-cell">
+                                        <strong>{{ account.account_number }}</strong>
+                                        <span>{{ account.server }}</span>
+                                        <span>{{ account.terminal_path or "Terminal not set up yet" }}</span>
+                                        <span>{{ account.appdata_hash or "AppData hash pending" }}</span>
+                                        {% if is_orphaned %}
+                                        <span>Cleanup-only record awaiting manual delete</span>
+                                        <span>Marked for cleanup: {{ account.cleanup_marked_at.strftime("%Y-%m-%d %H:%M UTC") if account.cleanup_marked_at else "Pending timestamp" }}</span>
+                                        {% endif %}
+                                    </div>
+                                </td>
+                                <td>
+                                    {% if is_orphaned %}
+                                    <span class="chip default">Cleanup Pending</span>
+                                    {% else %}
+                                    <span class="chip {{ 'success-chip' if account.is_active else 'danger-chip' }}">
+                                        {{ "Active" if account.is_active else "Inactive" }}
+                                    </span>
+                                    {% endif %}
+                                </td>
+                                <td>{{ account.last_synced_at.strftime("%Y-%m-%d %H:%M UTC") if account.last_synced_at else "Never" }}</td>
+                                <td>
+                                    <div class="inline-actions">
+                                        <form action="{{ url_for('admin_mt5_setup_terminal', mt5_account_id=account.id) }}" method="post">
+                                            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                                            <button type="submit" class="submit-btn" {% if is_orphaned %}disabled aria-disabled="true" title="Cleanup-only MT5 records cannot be set up."{% endif %}>Setup Terminal</button>
+                                        </form>
+                                        <form action="{{ url_for('admin_mt5_trigger_sync', mt5_account_id=account.id) }}" method="post">
+                                            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                                            <button type="submit" class="submit-btn" {% if not account.is_active or is_orphaned %}disabled aria-disabled="true"{% if is_orphaned %} title="Cleanup-only MT5 records cannot be synced."{% endif %}{% endif %}>Trigger Sync</button>
+                                        </form>
+                                        <form action="{{ url_for('admin_mt5_delete_account', mt5_account_id=account.id) }}" method="post" onsubmit="return confirm('Delete this MT5 account? This will also attempt to remove its terminal files from the VM.');">
+                                            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                                            <button
+                                                type="submit"
+                                                class="ghost-btn danger-btn"
+                                                {% if delete_disabled %}disabled aria-disabled="true" title="Deactivate the MT5 account or clear its imported trades before deleting it."{% endif %}
+                                            >
+                                                Delete
+                                            </button>
+                                        </form>
+                                    </div>
+                                </td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+                {% else %}
+                <p class="helper-note">No MT5 accounts have been configured yet.</p>
+                {% endif %}
+            </article>
+        </section>
+        <script>
+            (function() {
+                const userSelect = document.getElementById("user_id");
+                const tradeAccountSelect = document.getElementById("trade_account_id");
+                if (!userSelect || !tradeAccountSelect) {
+                    return;
+                }
+
+                const tradeAccountsByUser = {{ mt5_trade_accounts_by_user|tojson }};
+
+                function renderTradeAccounts() {
+                    const userId = userSelect.value;
+                    const tradeAccounts = tradeAccountsByUser[userId] || [];
+
+                    tradeAccountSelect.innerHTML = "";
+
+                    const placeholder = document.createElement("option");
+                    placeholder.value = "";
+                    placeholder.textContent = userId
+                        ? (tradeAccounts.length ? "Select a trade account" : "No CFD trade accounts for this user")
+                        : "Select a user first";
+                    tradeAccountSelect.appendChild(placeholder);
+
+                    tradeAccountSelect.disabled = !userId || tradeAccounts.length === 0;
+
+                    tradeAccounts.forEach(function(account) {
+                        const option = document.createElement("option");
+                        option.value = String(account.id);
+                        option.textContent = account.label;
+                        tradeAccountSelect.appendChild(option);
+                    });
+                }
+
+                userSelect.addEventListener("change", renderTradeAccounts);
+                renderTradeAccounts();
+            })();
+        </script>
+        {% else %}
+        <section class="panel-grid admin-main-grid">
+            <article class="panel create-code-panel">
+                <div class="panel-head">
+                    <h2>Create Signup Code</h2>
+                    <span class="soft">Referral or Invite</span>
+                </div>
+                {% if is_root_admin %}
+                <form action="{{ url_for('admin_signup_create_code') }}" method="post" class="code-form" data-themed-validation>
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+
+                    <label for="code">Manual Code (optional)</label>
+                    <input id="code" name="code" type="text" maxlength="32" placeholder="Leave blank to auto-generate">
+
+                    <label for="notes">Notes (optional)</label>
+                    <input id="notes" name="notes" type="text" maxlength="255" placeholder="e.g. Beta creator cohort">
+
+                    <label for="max_uses">Max Uses (optional)</label>
+                    <input id="max_uses" name="max_uses" type="number" min="1" step="1" placeholder="Unlimited if blank">
+
+                    <label for="expires_on">Expires On (optional)</label>
+                    <input id="expires_on" name="expires_on" type="date">
+
+                    <button type="submit" class="submit-btn">Create Code</button>
+                </form>
+                {% else %}
+                <p class="helper-note">Only root admins from <code>ADMIN_USER_EMAILS</code> can create or toggle signup codes.</p>
+                {% endif %}
+            </article>
+
+            <article class="panel codes-panel">
+                <div class="panel-head">
+                    <h2>Signup Codes</h2>
+                    <span class="soft">{{ signup_codes|length }} total</span>
+                </div>
+                {% if signup_codes %}
+                <div class="codes-list">
+                    {% for code in signup_codes %}
+                    <article class="code-card">
+                        <div class="code-head">
+                            <p class="code-value">{{ code.code }}</p>
+                            <span class="chip{% if code.is_active %} success-chip{% else %} default{% endif %}">{{ "Active" if code.is_active else "Inactive" }}</span>
+                        </div>
+                        <p class="pending-line">Referral link: {{ public_register_url }}?{{ signup_code_query_param }}={{ code.code }}</p>
+                        <p class="pending-line">Uses: {{ code.used_count }}{% if code.max_uses is not none %} / {{ code.max_uses }}{% else %} / unlimited{% endif %}</p>
+                        <p class="pending-line">Expires: {{ code.expires_at.strftime("%Y-%m-%d %H:%M UTC") if code.expires_at else "Never" }}</p>
+                        <p class="pending-line">Notes: {{ code.notes or "-" }}</p>
+                        {% if is_root_admin %}
+                        <div class="inline-actions">
+                            <form action="{{ url_for('admin_signup_toggle_code', code_id=code.id) }}" method="post">
+                                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                                <button type="submit" class="ghost-btn">{{ "Deactivate" if code.is_active else "Activate" }}</button>
+                            </form>
+                        </div>
+                        {% endif %}
+                    </article>
+                    {% endfor %}
+                </div>
+                {% else %}
+                <p class="helper-note">No signup codes created yet. Create one above when you want to invite users or control access with referral codes.</p>
+                {% endif %}
+            </article>
+        </section>
+        {% endif %}
+    </div>
+</section>
+
+{% if section == "users" and is_root_admin and users %}
+    {% for user in users %}
+        {% set user_accounts = accounts_by_user.get(user.id, []) %}
+        {% if user_accounts %}
+        <dialog id="regenAiDialog{{ user.id }}" class="confirm-dialog" aria-labelledby="regenAiDialogTitle{{ user.id }}">
+            <div class="confirm-dialog-shell">
+                <div>
+                    <h2 id="regenAiDialogTitle{{ user.id }}">Regenerate Weekly AI Advice</h2>
+                    <p class="helper-note regen-ai-note">Choose one trade account for {{ user.email }}. Existing advice for the current eligible week is replaced only if regeneration succeeds.</p>
+                </div>
+                <form action="{{ url_for('admin_regenerate_ai_advice', user_id=user.id) }}" method="post" class="regen-ai-form">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                    <label for="trade_account_id_{{ user.id }}">Trade Account</label>
+                    <select id="trade_account_id_{{ user.id }}" name="trade_account_id" required>
+                        <option value="" disabled selected>Select account...</option>
+                        {% for acct in user_accounts %}
+                        <option value="{{ acct.id }}">{{ acct.name }} ({{ "Futures" if acct.account_type == "FUTURES" else "CFD" }})</option>
+                        {% endfor %}
+                    </select>
+                    <div class="inline-actions dialog-actions">
+                        <button type="button" class="ghost-btn" onclick="this.closest('dialog').close()">Cancel</button>
+                        <button type="submit" class="submit-btn">Regenerate</button>
+                    </div>
+                </form>
+            </div>
+        </dialog>
+        {% endif %}
+    {% endfor %}
+{% endif %}
+
+<style>
+    .admin-access .dash-head,
+    .admin-access .panel {
+        border-radius: 16px;
+    }
+
+    .admin-head-row {
+        align-items: flex-start;
+    }
+
+    .admin-head-meta {
+        display: inline-flex;
+        align-items: center;
+        gap: 0.55rem;
+        flex-wrap: wrap;
+        justify-content: flex-end;
+    }
+
+    .admin-kicker,
+    .summary-label,
+    .control-label,
+    .code-form label {
+        margin: 0;
+        font-size: 0.74rem;
+        font-weight: 800;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+    }
+
+    .admin-summary-grid,
+    .admin-main-grid {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 0.85rem;
+        align-items: start;
+    }
+
+    .admin-summary-grid {
+        grid-template-columns: repeat(4, minmax(0, 1fr));
+        margin-bottom: 0.85rem;
+    }
+
+    .summary-card,
+    .control-panel {
+        padding: 0.95rem;
+    }
+
+    .summary-value {
+        margin: 0.3rem 0 0;
+        font-size: clamp(1.35rem, 2.1vw, 1.9rem);
+        font-weight: 800;
+    }
+
+    .summary-note,
+    .helper-note {
+        margin: 0.3rem 0 0;
+        font-size: 0.82rem;
+        color: var(--muted);
+    }
+
+    .control-panel {
+        margin-bottom: 0.85rem;
+    }
+
+    .control-grid {
+        display: grid;
+        grid-template-columns: repeat(4, minmax(0, 1fr));
+        gap: 0.7rem;
+    }
+
+    .control-item {
+        display: grid;
+        gap: 0.24rem;
+        padding: 0.72rem;
+        border: 1px solid color-mix(in srgb, var(--border) 82%, transparent);
+        border-radius: 12px;
+        background: color-mix(in srgb, var(--surface) 96%, transparent);
+    }
+
+    .admin-tabs {
+        display: inline-flex;
+        gap: 0.45rem;
+        flex-wrap: wrap;
+        margin-bottom: 0.85rem;
+    }
+
+    .admin-tab,
+    .admin-filter {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        min-height: 38px;
+        padding: 0 0.85rem;
+        border: 1px solid color-mix(in srgb, var(--border) 84%, transparent);
+        border-radius: 999px;
+        background: color-mix(in srgb, var(--surface) 78%, transparent);
+        color: var(--muted);
+        font-size: 0.76rem;
+        font-weight: 800;
+        letter-spacing: 0.03em;
+        text-transform: uppercase;
+        text-decoration: none;
+    }
+
+    .admin-tab.is-active,
+    .admin-filter.is-active,
+    .admin-tab:hover,
+    .admin-filter:hover {
+        color: var(--accent);
+        border-color: color-mix(in srgb, var(--accent) 36%, var(--border));
+        background: color-mix(in srgb, var(--accent) 14%, var(--surface));
+    }
+
+    .panel-head-stack {
+        align-items: flex-start;
+        gap: 0.7rem;
+        flex-direction: column;
+    }
+
+    .filter-row,
+    .inline-actions {
+        display: inline-flex;
+        align-items: center;
+        gap: 0.5rem;
+        flex-wrap: wrap;
+    }
+
+    .inline-actions form {
+        margin: 0;
+    }
+
+    .dialog-actions {
+        justify-content: flex-end;
+    }
+
+    .spotlight-panel,
+    .users-panel,
+    .create-code-panel,
+    .codes-panel {
+        padding: 0.95rem;
+    }
+
+    .pending-list,
+    .codes-list {
+        display: grid;
+        gap: 0.7rem;
+    }
+
+    .pending-card,
+    .code-card {
+        display: grid;
+        gap: 0.6rem;
+        border: 1px solid color-mix(in srgb, var(--border) 82%, transparent);
+        border-radius: 12px;
+        padding: 0.78rem;
+        background: color-mix(in srgb, var(--surface) 96%, transparent);
+    }
+
+    .pending-name,
+    .code-value {
+        margin: 0;
+        font-size: 0.95rem;
+        font-weight: 800;
+    }
+
+    .pending-line {
+        margin: 0.12rem 0 0;
+        font-size: 0.82rem;
+        overflow-wrap: anywhere;
+    }
+
+    .code-head {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 0.65rem;
+    }
+
+    .code-form {
+        display: grid;
+        gap: 0.7rem;
+    }
+
+    .code-form input {
+        width: 100%;
+        border: 1px solid color-mix(in srgb, var(--border) 90%, transparent);
+        border-radius: 10px;
+        padding: 0.72rem 0.78rem;
+        font: inherit;
+        background: color-mix(in srgb, var(--surface) 96%, transparent);
+        color: var(--ink);
+    }
+
+    .regen-ai-form {
+        display: grid;
+        gap: 0.7rem;
+    }
+
+    .regen-ai-form select {
+        width: 100%;
+        border: 1px solid color-mix(in srgb, var(--border) 90%, transparent);
+        border-radius: 10px;
+        padding: 0.72rem 0.78rem;
+        font: inherit;
+        background: color-mix(in srgb, var(--surface) 96%, transparent);
+        color: var(--ink);
+    }
+
+    .regen-ai-note {
+        margin-top: 0.35rem;
+    }
+
+    .admin-table-shell {
+        overflow: auto;
+    }
+
+    .admin-table {
+        width: 100%;
+        min-width: 980px;
+        border-collapse: collapse;
+    }
+
+    .admin-table th,
+    .admin-table td {
+        padding: 0.8rem 0.78rem;
+        border-bottom: 1px solid color-mix(in srgb, var(--border) 74%, transparent);
+        text-align: left;
+        vertical-align: top;
+        font-size: 0.84rem;
+    }
+
+    .admin-table th {
+        font-size: 0.74rem;
+        font-weight: 800;
+        letter-spacing: 0.06em;
+        text-transform: uppercase;
+        color: var(--muted);
+        background: color-mix(in srgb, var(--surface) 92%, transparent);
+        position: sticky;
+        top: 0;
+        z-index: 1;
+    }
+
+    .user-cell {
+        display: grid;
+        gap: 0.16rem;
+    }
+
+    .user-cell span {
+        color: var(--muted);
+        overflow-wrap: anywhere;
+    }
+
+    .chip {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        border: 1px solid color-mix(in srgb, var(--border) 78%, transparent);
+        border-radius: 999px;
+        padding: 0.22rem 0.56rem;
+        font-size: 0.68rem;
+        font-weight: 800;
+        letter-spacing: 0.04em;
+        text-transform: uppercase;
+        background: color-mix(in srgb, var(--surface) 92%, transparent);
+        color: var(--muted);
+    }
+
+    .chip.success-chip {
+        border-color: color-mix(in srgb, var(--good) 48%, var(--border));
+        background: color-mix(in srgb, var(--good) 14%, var(--surface));
+        color: color-mix(in srgb, var(--good) 82%, white 18%);
+    }
+
+    .chip.danger-chip {
+        border-color: color-mix(in srgb, var(--bad) 44%, var(--border));
+        background: color-mix(in srgb, var(--bad) 14%, var(--surface));
+        color: color-mix(in srgb, var(--bad) 82%, white 18%);
+    }
+
+    .chip.root-chip {
+        border-color: color-mix(in srgb, var(--accent) 44%, var(--border));
+        background: color-mix(in srgb, var(--accent) 14%, var(--surface));
+        color: color-mix(in srgb, var(--accent) 82%, white 18%);
+    }
+
+    @media (max-width: 1180px) {
+        .admin-summary-grid,
+        .control-grid {
+            grid-template-columns: repeat(2, minmax(0, 1fr));
+        }
+    }
+
+    @media (max-width: 980px) {
+        .admin-main-grid {
+            grid-template-columns: 1fr;
+        }
+    }
+
+    @media (max-width: 680px) {
+        .admin-summary-grid,
+        .control-grid {
+            grid-template-columns: 1fr;
+        }
+
+        .admin-head-row {
+            flex-direction: column;
+        }
+
+        .admin-head-meta {
+            justify-content: flex-start;
+        }
+    }
+</style>
+<script>
+    function openRegenAiDialog(userId) {
+        const dialog = document.getElementById(`regenAiDialog${userId}`);
+        if (dialog && typeof dialog.showModal === "function") {
+            dialog.showModal();
+        }
+    }
+</script>
+{% endblock %}
